@@ -1,0 +1,4 @@
+node_modules
+.env
+mobile/node_modules
+mobile/android

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: musicverse
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: JAMENDO_CLIENT_ID
+        sync: false
