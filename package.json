@@ -1,1 +1,3 @@
-{"name":"musicverse","version":"1.0.0","type":"module","scripts":{"start":"node server.js"},"engines":{"node":">=18"},"dependencies":{"express":"^4.19.2"}}
+{"name":"musicverse-mobile","version":"1.0.0","private":true,
+"dependencies":{"@capacitor/core":"^6.1.2","@capacitor/android":"^6.1.2"},
+"devDependencies":{"@capacitor/cli":"^6.1.2","@capacitor/assets":"^3.0.5"}}
