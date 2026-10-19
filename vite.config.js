@@ -1,3 +1,8 @@
+import { config } from 'dotenv';
+// Load .env BEFORE importing api.js so JAMENDO_CLIENT_ID is available in
+// process.env when the Vite dev-server middleware runs. Vite only auto-loads
+// VITE_-prefixed vars; our server-only key has no prefix, so we load it here.
+config();
 import { defineConfig } from 'vite';
 import { routes, sendJson } from './api.js';
 
