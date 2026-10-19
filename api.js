@@ -10,14 +10,36 @@ const key = () => process.env.JAMENDO_CLIENT_ID;
 const cache = new Map();
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
 
-async function get(url, ttl = 600000) {
-  const hit = cache.get(url);
-  if (hit && Date.now() - hit.t < ttl) return hit.d;
-  const r = await fetch(url, { headers: { 'User-Agent': 'MusicVerse/1.0' } });
+// Jamendo's free tier intermittently returns empty result sets (HTTP 200,
+// status=success, zero results) when requests arrive too quickly. Serialize
+// outbound calls and retry up to twice on an empty filtered response.
+let chain = Promise.resolve();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function jamendoFetch(url, { expectResults = false } = {}) {
+  let d = await get(url);
+  if (expectResults) {
+    for (let i = 0; i < 2 && d.results && d.results.length === 0 && d.headers?.status === 'success'; i++) {
+      await sleep(1500);
+      d = await get(url, { force: true });
+    }
+  }
+  return d;
+}
+
+async function get(url, ttl = 600000, { force = false } = {}) {
+  if (!force) {
+    const hit = cache.get(url);
+    if (hit && Date.now() - hit.t < ttl) return hit.d;
+  }
+  const next = chain.then(() => fetch(url, { headers: { 'User-Agent': 'MusicVerse/1.0' } }));
+  chain = next.then(() => sleep(800), () => sleep(800));
+  const r = await next;
   if (r.status === 429) throw fail(429, 'The music provider is rate-limiting requests. Try again in a minute.');
   if (!r.ok) throw fail(502, `Music provider returned ${r.status}.`);
   const d = await r.json();
-  cache.set(url, { t: Date.now(), d });
+  // Only cache non-empty Jamendo responses; empty ones are usually transient
+  // rate-limit artifacts that should not be served on retry.
+  if (!d.results || d.results.length > 0) cache.set(url, { t: Date.now(), d });
   if (cache.size > 500) cache.delete(cache.keys().next().value);
   return d;
 }
@@ -28,9 +50,14 @@ async function tracks(query) {
   if (!KEY) throw fail(503, 'Server is missing JAMENDO_CLIENT_ID. See README.');
   const p = new URLSearchParams({ client_id: KEY, format: 'json', limit: Math.min(+query.limit || 24, 50),
     imagesize: 300, audioformat: 'mp32', include: 'musicinfo', order: query.order || 'popularity_week' });
-  for (const k of ['search', 'tags', 'lang', 'artist_name', 'album_name'])
+  for (const k of ['search', 'tags', 'artist_name', 'album_name'])
     if (query[k]) p.set(k, String(query[k]).slice(0, 80));
-  const d = await get('https://api.jamendo.com/v3.0/tracks/?' + p);
+  // Jamendo filters by vocal language via 'vocallanguage', not 'lang'. The
+  // frontend sends 'lang' (e.g. 'hi', 'pa', 'en'); map it through here so the
+  // existing home/explore chips keep working.
+  if (query.lang) p.set('vocallanguage', String(query.lang).slice(0, 80));
+  const filtered = Boolean(query.search || query.tags || query.lang || query.artist_name || query.album_name || query.order);
+  const d = await jamendoFetch('https://api.jamendo.com/v3.0/tracks/?' + p, { expectResults: filtered });
   if (d.headers?.status !== 'success') throw fail(502, d.headers?.error_message || 'Provider error');
   return d.results.filter(t => t.audio).map(t => ({
     id: 'j' + t.id, title: t.name, artist: t.artist_name, album: t.album_name,
