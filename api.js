@@ -1,7 +1,12 @@
 // Shared API logic used by both the production Express server (server.js)
 // and the Vite dev-server middleware. Kept framework-agnostic: each route
 // returns a plain object or throws { code, message }.
-const KEY = process.env.JAMENDO_CLIENT_ID;
+//
+// SECURITY: JAMENDO_CLIENT_ID is read server-side only and never exposed to
+// the browser. The frontend calls /api/* routes, which proxy to Jamendo with
+// the key appended here. Load .env so local dev picks it up automatically.
+import 'dotenv/config';
+const key = () => process.env.JAMENDO_CLIENT_ID;
 const cache = new Map();
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
 
@@ -19,6 +24,7 @@ async function get(url, ttl = 600000) {
 
 // Jamendo: Creative Commons catalog, full-length streaming allowed with a free client id.
 async function tracks(query) {
+  const KEY = key();
   if (!KEY) throw fail(503, 'Server is missing JAMENDO_CLIENT_ID. See README.');
   const p = new URLSearchParams({ client_id: KEY, format: 'json', limit: Math.min(+query.limit || 24, 50),
     imagesize: 300, audioformat: 'mp32', include: 'musicinfo', order: query.order || 'popularity_week' });
